@@ -16,6 +16,9 @@ fugit.workspace = true
 rp2040-boot2 = { workspace = true, optional = true }
 rp2040-hal.workspace = true
 usb-device.workspace = true
+rand = { version = "0.9.2", features = ["small_rng"], default-features = false }
+rand_core = "0.9.3"                                                              # NOTE: Added by me
+rand_distr = { version = "0.5.1", default-features = false }
 
 [dev-dependencies]
 cortex-m.workspace = true
@@ -32,7 +35,7 @@ nb.workspace = true
 panic-halt.workspace = true
 pio.workspace = true
 pio-proc.workspace = true
-rp2040-hal = { workspace = true, features = [ "defmt" ] }
+rp2040-hal = { workspace = true, features = ["defmt"] }
 smart-leds.workspace = true
 ssd1306.workspace = true
 usbd-hid.workspace = true
@@ -53,7 +56,7 @@ critical-section-impl = ["rp2040-hal/critical-section-impl"]
 boot2 = ["rp2040-boot2"]
 
 # Minimal startup / runtime for Cortex-M microcontrollers
-rt = ["cortex-m-rt","rp2040-hal/rt"]
+rt = ["cortex-m-rt", "rp2040-hal/rt"]
 
 # This enables a fix for USB errata 5: USB device fails to exit RESET state on busy USB bus.
 # Only required for RP2040 B0 and RP2040 B1, but it also works for RP2040 B2 and above

@@ -15,8 +15,15 @@
 #![no_main]
 #![allow(static_mut_refs)]
 
+// The random number generator
+use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand_distr::{Distribution, Geometric};
+
 // The macro for our start-up function
 use rp_pico::entry;
+
+// GPIO traits
+use embedded_hal::digital::OutputPin;
 
 // The macro for marking our interrupt functions
 use rp_pico::hal::pac::interrupt;
@@ -83,16 +90,14 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
-    #[cfg(feature = "rp2040-e5")]
-    {
-        let sio = hal::Sio::new(pac.SIO);
-        let _pins = rp_pico::Pins::new(
-            pac.IO_BANK0,
-            pac.PADS_BANK0,
-            sio.gpio_bank0,
-            &mut pac.RESETS,
-        );
-    }
+    let sio = hal::Sio::new(pac.SIO);
+    let pins = rp_pico::Pins::new(
+        pac.IO_BANK0,
+        pac.PADS_BANK0,
+        sio.gpio_bank0,
+        &mut pac.RESETS,
+    );
+    let mut led_pin = pins.led.into_push_pull_output();
 
     // Set up the USB driver
     let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
@@ -122,9 +127,9 @@ fn main() -> ! {
     // Create a USB device with a fake VID and PID
     let usb_dev = UsbDeviceBuilder::new(bus_ref, UsbVidPid(0x16c0, 0x27da))
         .strings(&[StringDescriptors::default()
-            .manufacturer("Fake company")
-            .product("Twitchy Mousey")
-            .serial_number("TEST")])
+            .manufacturer("Fruppo SRL")
+            .product("Nyan Mouse")
+            .serial_number("WFD2718")])
         .unwrap()
         .device_class(0)
         .build();
@@ -140,29 +145,50 @@ fn main() -> ! {
     let core = pac::CorePeripherals::take().unwrap();
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
 
-    // Move the cursor up and down every 200ms
+    let mut seed_value: u64 = 0;
+    for i in 0..64 {
+        while pac.ROSC.randombit().read().bits() == 0 {}
+        seed_value |= (pac.ROSC.randombit().read().bits() as u64) << i;
+    }
+
+    let mut rng = SmallRng::seed_from_u64(seed_value);
+    let wait_distr = Geometric::new(0.00025).unwrap(); // Wait for an avarage of 4000ms
+    let countdown_distr = Geometric::new(0.01).unwrap(); // Act for an avarage of 100 cycles (10000ms), then wait
+
+    let mut countdown = 50;
+    let mut scroll = false;
+
+    // Move the cursor or scroll at random intervals
     loop {
-        delay.delay_ms(100);
+        countdown -= 1;
+        if scroll || countdown == 0 {
+            scroll = rng.random_bool(0.3);
+            countdown = 5 + countdown_distr.sample(&mut rng).min(200) as u32;
+            let wait_time = 500 + wait_distr.sample(&mut rng).min(20000) as u32;
+            delay.delay_ms(wait_time);
+        }
 
         let rep_up = MouseReport {
-            x: 0,
-            y: 4,
+            x: if scroll {
+                0
+            } else {
+                rng.random_range(-50..=50)
+            },
+            y: if scroll {
+                0
+            } else {
+                rng.random_range(-40..=40)
+            },
             buttons: 0,
-            wheel: 0,
+            wheel: if scroll { rng.random_range(-5..=5) } else { 0 },
             pan: 0,
         };
         push_mouse_movement(rep_up).ok().unwrap_or(0);
 
-        delay.delay_ms(100);
-
-        let rep_down = MouseReport {
-            x: 0,
-            y: -4,
-            buttons: 0,
-            wheel: 0,
-            pan: 0,
-        };
-        push_mouse_movement(rep_down).ok().unwrap_or(0);
+        led_pin.set_high().unwrap();
+        delay.delay_ms(50);
+        led_pin.set_low().unwrap();
+        delay.delay_ms(50);
     }
 }
 
